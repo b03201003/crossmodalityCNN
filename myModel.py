@@ -20,7 +20,7 @@ def Get_nib_dataNlabel(paths):#paths: list of path (glob)
 	modalities = []
 	for path in paths:
 		if os.path.isdir(path):
-			dir_name = path.split('/')[-2]
+			dir_name = path.split('/')[-1]
 			print "Now in ",dir_name
 			nibfile = nib.load(path+'/'+dir_name+'_flair.nii')
 			image = nibfile.get_data()
@@ -38,8 +38,8 @@ def Get_nib_dataNlabel(paths):#paths: list of path (glob)
 			image = nibfile.get_data()
 			print "t2image.shape:",image.shape
 			modalities.append(image)
-
 			data.append(modalities)
+			modalities = []
 
 			nibfile = nib.load(path+'/'+dir_name+'_seg.nii')
 			image = nibfile.get_data()
@@ -51,62 +51,67 @@ def Get_nib_dataNlabel(paths):#paths: list of path (glob)
 
 
 #HGGpaths = glob.glob('/data/BraTS/BraTS17/MICCAI_BraTS17_Data_Training/HGG/*')
-HGGpaths = glob.glob('~/Testing/HGG/*')
-HGGdata,HGGlabel = Get_nib_data(HGGpaths)
+HGGpaths = glob.glob('/home/u/b03201003/Testing/HGG/*')
+HGGdata,HGGlabel = Get_nib_dataNlabel(HGGpaths)
 #LGGpaths = glob.glob('/data/BraTS/BraTS17/MICCAI_BraTS17_Data_Training/LGG/*')
-LGGpaths = glob.glob('~/Testing/LGG/*')
-LGGdata,LGGlabel = Get_nib_data(LGGpaths)
-
+LGGpaths = glob.glob('/home/u/b03201003/Testing/LGG/*')
+LGGdata,LGGlabel = Get_nib_dataNlabel(LGGpaths)
+print "HGGdata.shape,HGGlabel.shape:",HGGdata.shape,HGGlabel.shape#(None, 4, 240, 240, 155) (None, 240, 240, 155)
+print "LGGdata.shape,LGGlabel.shape:",LGGdata.shape,LGGlabel.shape#(None, 4, 240, 240, 155) (None, 240, 240, 155)
 #20% test set
+print "HGGdata[len(HGGdata)/5:].shape,LGGdata[len(LGGdata)/5:].shape:",HGGdata[len(HGGdata)/5:].shape,LGGdata[len(LGGdata)/5:].shape
 data_train = np.concatenate((HGGdata[len(HGGdata)/5:],LGGdata[len(LGGdata)/5:]))/4.0
 label = np.concatenate((HGGlabel[len(HGGlabel)/5:],LGGlabel[len(LGGlabel)/5:]))/4.0 #Needed?
 X_test = np.concatenate((HGGdata[:len(HGGdata)/5],LGGdata[:len(LGGdata)/5]))/4.0
 Y_test = np.concatenate((HGGlabel[:len(HGGlabel)/5],LGGlabel[:len(LGGlabel)/5]))/4.0
 print "data_train.shape,label.shape,X_test.shape,Y_test.shape:",data_train.shape,label.shape,X_test.shape,Y_test.shape
 data_train  = data_train.reshape((4,-1,240,240,1))
+label = label.reshape((-1,240,240,1))
 X_test =  X_test.reshape((4,-1,240,240,1))
-print "reshaped data_train.shape,X_test.shape:",data_train.shape,X_test.shape
+Y_test = Y_test.reshape((-1,240,240,1))
+print "reshaped data_train.shape,label.shape,X_test.shape,Y_test.shape:",data_train.shape,label.shape,X_test.shape,Y_test.shape
 
 def MMEncoder(inputTensor):#Conv+BN+ReLU / MaxPooling
-	encodedTensor = Conv2D(filters=4,kernai_size=(3,3),padding='same')(inputTensor)
+	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(inputTensor)
 	encodedTensor = BatchNormalization()(encodedTensor)
 	encodedTensor = Activation('relu')(encodedTensor)
 	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	encodedTensor = Conv2D(filters=8,kernai_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = Conv2D(filters=8,kernel_size=(3,3),padding='same')(encodedTensor)
 	encodedTensor = BatchNormalization()(encodedTensor)
 	encodedTensor = Activation('relu')(encodedTensor)
 	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	encodedTensor = Conv2D(filters=16,kernai_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = Conv2D(filters=16,kernel_size=(3,3),padding='same')(encodedTensor)
 	encodedTensor = BatchNormalization()(encodedTensor)
 	encodedTensor = Activation('relu')(encodedTensor)
 	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	encodedTensor = Conv2D(filters=32,kernai_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = Conv2D(filters=32,kernel_size=(3,3),padding='same')(encodedTensor)
 	encodedTensor = BatchNormalization()(encodedTensor)
 	encodedTensor = Activation('relu')(encodedTensor)
 	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
 	return encodedTensor #(15,15,32)
 
-Flair_x = Input(Shape(240,240,1))
-T1ce_x = Input(Shape(240,240,1))
-T1_x = Input(Shape(240,240,1))
-T2_x = Input(Shape(240,240,1))
+Flair_x = Input(shape=(240,240,1))
+T1ce_x = Input(shape=(240,240,1))
+T1_x = Input(shape=(240,240,1))
+T2_x = Input(shape=(240,240,1))
 
 
 encodedFlair_x = Lambda(MMEncoder)(Flair_x)
 encodedT1ce_x = Lambda(MMEncoder)(T1ce_x)
 encodedT1_x = Lambda(MMEncoder)(T1_x)
 encodedT2_x = Lambda(MMEncoder)(T2_x)
-
-def CrossModalityCovolution(encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x):
+my_stack = Lambda(lambda x: K.stack([x[0],x[1],x[2],x[3]],axis=-1))
+CNNinput = my_stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x])
+#CNNinput = K.stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x],axis=-1)#(15,15,32,4)
+def CrossModalityCovolution(CNNinput):
 	#cross modality part:
-	CNNinput = K.stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x],axis=-1)#(15,15,32,4)
-	CNNinput = Permute((0, 1, 3, 2))(CNNinput)#(15,15,4,32)
+	CNNinput = Permute((1, 2, 4, 3))(CNNinput)#(15,15,4,32)
 	#3D CNN part:
-	CLSTMinput = Conv3D(filters=32,kernai_size=(1,1,4))(CNNinput) #(15,15,1,128)
-	CLSTMinput = Reshape((15,15,32))
+	CLSTMinput = Conv3D(filters=32,kernel_size=(1,1,4))(CNNinput) #(15,15,1,128)
+	CLSTMinput = K.reshape(CLSTMinput,[-1,15,15,32])
 	return CLSTMinput
 
-CLSTMinput = Lambda(CrossModalityCovolution)(encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x)
+CLSTMinput = Lambda(CrossModalityCovolution)(CNNinput)
 def CLSTM(CLSTMinput):#(15,15,128)??
 
 
@@ -114,19 +119,19 @@ def CLSTM(CLSTMinput):#(15,15,128)??
 
 #CLSTMoutput = Lambda(CLSTM)(CLSTMinput)
 def Decoder(CLSTMoutput):#Conv+BN+ReLU / Upsampling
-	decodedImage = Conv2D(filters=16,kernai_size=(3,3),padding='same')(CLSTMoutput)
+	decodedImage = Conv2D(filters=16,kernel_size=(3,3),padding='same')(CLSTMoutput)
 	decodedImage = BatchNormalization()(decodedImage)
 	decodedImage = Activation('relu')(decodedImage)
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	decodedImage = Conv2D(filters=8,kernai_size=(3,3),padding='same')(encodedTensor)
+	decodedImage = Conv2D(filters=8,kernel_size=(3,3),padding='same')(decodedImage)
 	decodedImage = BatchNormalization()(decodedImage)
 	decodedImage = Activation('relu')(decodedImage)
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	decodedImage = Conv2D(filters=4,kernai_size=(3,3),padding='same')(encodedTensor)
+	decodedImage = Conv2D(filters=4,kernel_size=(3,3),padding='same')(decodedImage)
 	decodedImage = BatchNormalization()(decodedImage)
 	decodedImage = Activation('relu')(decodedImage)
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	decodedImage = Conv2D(filters=1,kernai_size=(3,3),padding='same')(encodedTensor)
+	decodedImage = Conv2D(filters=1,kernel_size=(3,3),padding='same')(decodedImage)
 	decodedImage = BatchNormalization()(decodedImage)
 	decodedImage = Activation('relu')(decodedImage)
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
@@ -145,7 +150,7 @@ input_list = [data_train[0],data_train[1],data_train[2],data_train[3]]
 batch_size=32
 TrainEpochs = 100
 for i in range(TrainEpochs):
-	History = CrossModalityCNNmodel.fit(x=input_list,y=label,batch_size=batch_size,epochs=1,verbose=2,validation_split=0.2)
+	History = CrossModalityCNNmodel.fit(x=input_list,y=label,batch_size=batch_size,epochs=1,validation_split=0.2)
 
 loss,acc = CrossModalityCNNmodel.evaluate(x=X_test,y=Y_test,batch_size=batch_size)
 print "\nloss:%.2f,acc:%.2f%%"%(loss,acc*100)
