@@ -11,50 +11,68 @@ from keras.models import Sequential,Model
 from keras.layers import Lambda,Input,Conv2D,Conv3D,Activation,UpSampling2D,MaxPooling2D,BatchNormalization,Dense,Dropout,Permute,Reshape
 from keras.optimizers import Nadam
 from sklearn.model_selection import train_test_split
+from keras.models import load_model
 
-os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[1]
+os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[2]
 
 def Get_nib_dataNlabel(paths):#paths: list of path (glob)
 	data = []
 	label = []
 	modalities = []
+	c = 0
 	for path in paths:
 		if os.path.isdir(path):
+			c+=5
+			print "open file counter:",c
 			dir_name = path.split('/')[-1]
 			print "Now in ",dir_name
+			#with nib.load(path+'/'+dir_name+'_flair.nii') as nibfile:
 			nibfile = nib.load(path+'/'+dir_name+'_flair.nii')
 			image = nibfile.get_data()
 			print "flair image.shape:",image.shape
 			modalities.append(image)
+			#print "nibfile.header:",nibfile.header
+			del nibfile
+			#with nib.load(path+'/'+dir_name+'_t1ce.nii') as nibfile:	
 			nibfile = nib.load(path+'/'+dir_name+'_t1ce.nii')
 			image = nibfile.get_data()
 			print "t1ce image.shape:",image.shape
 			modalities.append(image)
+			del nibfile
+			#with nib.load(path+'/'+dir_name+'_t1.nii') as nibfile:
 			nibfile = nib.load(path+'/'+dir_name+'_t1.nii')
 			image = nibfile.get_data()
 			print "t1 image.shape:",image.shape
 			modalities.append(image)
+			del nibfile
+			#with nib.load(path+'/'+dir_name+'_t2.nii') as nibfile:
 			nibfile = nib.load(path+'/'+dir_name+'_t2.nii')
 			image = nibfile.get_data()
 			print "t2image.shape:",image.shape
 			modalities.append(image)
+			del nibfile
+
 			data.append(modalities)
 			modalities = []
 
+			#with nib.load(path+'/'+dir_name+'_seg.nii') as nibfile:
 			nibfile = nib.load(path+'/'+dir_name+'_seg.nii')
 			image = nibfile.get_data()
 			print "label image.shape:",image.shape
 			label.append(image)
+			del nibfile
 
 	return np.array(data),np.array(label)
 
-
-
-#HGGpaths = glob.glob('/data/BraTS/BraTS17/MICCAI_BraTS17_Data_Training/HGG/*')
-HGGpaths = glob.glob('/home/u/b03201003/Testing/HGG/*')
+if sys.argv[1]=='debug':
+	HGGpaths = glob.glob('/home/u/b03201003/Testing/HGG/*')
+	LGGpaths = glob.glob('/home/u/b03201003/Testing/LGG/*')
+elif sys.argv[1]=='train':
+	HGGpaths = glob.glob('/home/u/b03201003/BraTS17/HGG/*')
+	LGGpaths = glob.glob('/home/u/b03201003/BraTS17/LGG/*')
+else:
+	raise AttributeError("Only debug and train mode can be choosed")
 HGGdata,HGGlabel = Get_nib_dataNlabel(HGGpaths)
-#LGGpaths = glob.glob('/data/BraTS/BraTS17/MICCAI_BraTS17_Data_Training/LGG/*')
-LGGpaths = glob.glob('/home/u/b03201003/Testing/LGG/*')
 LGGdata,LGGlabel = Get_nib_dataNlabel(LGGpaths)
 print "HGGdata.shape,HGGlabel.shape:",HGGdata.shape,HGGlabel.shape#(None, 4, 240, 240, 155) (None, 240, 240, 155)
 print "LGGdata.shape,LGGlabel.shape:",LGGdata.shape,LGGlabel.shape#(None, 4, 240, 240, 155) (None, 240, 240, 155)
@@ -96,11 +114,12 @@ T1_x = Input(shape=(240,240,1))
 T2_x = Input(shape=(240,240,1))
 
 
-encodedFlair_x = Lambda(MMEncoder)(Flair_x)
-encodedT1ce_x = Lambda(MMEncoder)(T1ce_x)
-encodedT1_x = Lambda(MMEncoder)(T1_x)
-encodedT2_x = Lambda(MMEncoder)(T2_x)
+encodedFlair_x = MMEncoder(Flair_x)
+encodedT1ce_x = MMEncoder(T1ce_x)
+encodedT1_x = MMEncoder(T1_x)
+encodedT2_x = MMEncoder(T2_x)
 my_stack = Lambda(lambda x: K.stack([x[0],x[1],x[2],x[3]],axis=-1))
+my_stack.trainable = True
 CNNinput = my_stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x])
 #CNNinput = K.stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x],axis=-1)#(15,15,32,4)
 def CrossModalityCovolution(CNNinput):
@@ -111,12 +130,9 @@ def CrossModalityCovolution(CNNinput):
 	CLSTMinput = K.reshape(CLSTMinput,[-1,15,15,32])
 	return CLSTMinput
 
-CLSTMinput = Lambda(CrossModalityCovolution)(CNNinput)
-def CLSTM(CLSTMinput):#(15,15,128)??
-
-
-	return CLSTMinput #
-
+CLSTMinput = CrossModalityCovolution(CNNinput)
+# def CLSTM(CLSTMinput):#(15,15,128)??
+# 	return CLSTMinput #
 #CLSTMoutput = Lambda(CLSTM)(CLSTMinput)
 def Decoder(CLSTMoutput):#Conv+BN+ReLU / Upsampling
 	decodedImage = Conv2D(filters=16,kernel_size=(3,3),padding='same')(CLSTMoutput)
@@ -137,13 +153,16 @@ def Decoder(CLSTMoutput):#Conv+BN+ReLU / Upsampling
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
 	return decodedImage
 #decodedImage = Lambda(Decoder)(CLSTMoutput)
-decodedImage = Lambda(Decoder)(CLSTMinput)
+decodedImage = Decoder(CLSTMinput)
+
 
 CrossModalityCNNmodel = Model(inputs=[Flair_x,T1ce_x,T1_x,T2_x],outputs=decodedImage)
 CrossModalityCNNmodel.compile(optimizer='nadam',loss = 'mse')
 CrossModalityCNNmodel.summary()
 
-
+save_model_file = 'myModel.h5'
+if os.path.isfile(save_model_file):
+	CrossModalityCNNmodel = load_model(save_model_file)
 
 
 input_list = [data_train[0],data_train[1],data_train[2],data_train[3]]
@@ -154,5 +173,5 @@ for i in range(TrainEpochs):
 
 loss,acc = CrossModalityCNNmodel.evaluate(x=X_test,y=Y_test,batch_size=batch_size)
 print "\nloss:%.2f,acc:%.2f%%"%(loss,acc*100)
-
+CrossModalityCNNmodel.save('myModel.h5')
 
