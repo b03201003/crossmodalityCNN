@@ -12,13 +12,23 @@ from keras.layers import Lambda,Input,Conv2D,Conv3D,Activation,UpSampling2D,MaxP
 from keras.optimizers import Nadam
 from sklearn.model_selection import train_test_split
 from keras.models import load_model
-
 from mylayers import *
-
+import tensorflow as tf
 os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[2]
-def weight_():
-	pass
+batch_size=32
+num_classes=4 #0,1,2,4  
+# def weighted_cross_entropy(y_true,y_pred):
+# 	annotations = tf.reshape(y_true, shape=[batch_size, 240, 240])
+#     annotations_ohe = tf.one_hot(annotations, num_classes, axis=-1)
+#     weights = 
+#     loss = K.losses.softmax_cross_entropy(onehot_labels=annotations_ohe, logits=y_pred, weights=weights)
 
+# 	return loss
+def myLoss(y_true,y_pred):
+	tmp = tf.abs(tf.subtract(y_true,y_pred))
+	ones = tf.ones(tf.shape(tmp))
+	loss = tf.reduce_sum(tf.log(tf.add(tmp,ones)))
+	return loss
 
 def Get_nib_dataNlabel(paths):#paths: list of path (glob)
 	data = []
@@ -200,15 +210,15 @@ else:
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
 
 	CrossModalityCNNmodel = Model(inputs=[Flair_x,T1ce_x,T1_x,T2_x],outputs=decodedImage)
-	CrossModalityCNNmodel.compile(optimizer='nadam',loss = 'mse')
+	CrossModalityCNNmodel.compile(optimizer='nadam',loss=myLoss)#,loss = 'mse')
 	CrossModalityCNNmodel.summary()
 
 
 
 
 input_list = [modality for modality in data_train]#[data_train[0],data_train[1],data_train[2],data_train[3]]
-batch_size=32
-TrainEpochs = 1
+
+TrainEpochs = 10
 for i in range(TrainEpochs):
 	History = CrossModalityCNNmodel.fit(x=input_list,y=label,batch_size=batch_size,epochs=1,validation_split=0.2)
 CrossModalityCNNmodel.save('myModel.h5')
