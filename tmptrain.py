@@ -16,6 +16,9 @@ from keras.models import load_model
 from mylayers import *
 
 os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[2]
+def weight_():
+	pass
+
 
 def Get_nib_dataNlabel(paths):#paths: list of path (glob)
 	data = []
@@ -203,13 +206,16 @@ else:
 
 
 
-input_list = [data_train[0],data_train[1],data_train[2],data_train[3]]
+input_list = [modality for modality in data_train]#[data_train[0],data_train[1],data_train[2],data_train[3]]
 batch_size=32
-TrainEpochs = 100
+TrainEpochs = 1
 for i in range(TrainEpochs):
 	History = CrossModalityCNNmodel.fit(x=input_list,y=label,batch_size=batch_size,epochs=1,validation_split=0.2)
-
-loss,acc = CrossModalityCNNmodel.evaluate(x=X_test,y=Y_test,batch_size=batch_size)
-print "\nloss:%.2f,acc:%.2f%%"%(loss,acc*100)
 CrossModalityCNNmodel.save('myModel.h5')
+print "X_test.shape,Y_test.shape:",X_test.shape,Y_test.shape
+test_list = [modality for modality in X_test]
+print "len(test_list):",len(test_list)
+loss,acc = CrossModalityCNNmodel.evaluate(test_list,Y_test,batch_size)
+print "\nloss:%.2f,acc:%.2f%%"%(loss,acc*100)
+
 
