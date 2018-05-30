@@ -8,11 +8,13 @@ import keras
 from keras import backend as K
 from keras import regularizers
 from keras.models import Sequential,Model
-from keras.layers import Lambda,Input,Conv2D,Conv3D,Activation,UpSampling2D,MaxPooling2D,BatchNormalization,Dense,Dropout,Permute,Reshape
+from keras.layers import Lambda,Input,Conv2D,Conv3D,Activation,UpSampling2D,MaxPooling2D,BatchNormalization,Dense,Dropout,Permute,Reshape,Flatten
 from keras.optimizers import Nadam
 from sklearn.model_selection import train_test_split
 from keras.models import load_model
+
 from mylayers import *
+
 os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[2]
 
 def Get_nib_dataNlabel(paths):#paths: list of path (glob)
@@ -72,6 +74,7 @@ elif sys.argv[1]=='train':
 	LGGpaths = glob.glob('/home/u/b03201003/BraTS17/LGG/*')
 else:
 	raise AttributeError("Only debug and train mode can be choosed")
+
 HGGdata,HGGlabel = Get_nib_dataNlabel(HGGpaths)
 LGGdata,LGGlabel = Get_nib_dataNlabel(LGGpaths)
 print "HGGdata.shape,HGGlabel.shape:",HGGdata.shape,HGGlabel.shape#(None, 4, 240, 240, 155) (None, 240, 240, 155)
@@ -89,8 +92,16 @@ X_test =  X_test.reshape((4,-1,240,240,1))
 Y_test = Y_test.reshape((-1,240,240,1))
 print "reshaped data_train.shape,label.shape,X_test.shape,Y_test.shape:",data_train.shape,label.shape,X_test.shape,Y_test.shape
 
-def MMEncoder(inputTensor):#Conv+BN+ReLU / MaxPooling
-	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(inputTensor)
+save_model_file = 'myModel.h5'
+if os.path.isfile(save_model_file):
+	CrossModalityCNNmodel = load_model(save_model_file)
+else: 
+	Flair_x = Input(shape=(240,240,1))
+	T1ce_x = Input(shape=(240,240,1))
+	T1_x = Input(shape=(240,240,1))
+	T2_x = Input(shape=(240,240,1))
+
+	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(Flair_x)
 	encodedTensor = BatchNormalization()(encodedTensor)
 	encodedTensor = Activation('relu')(encodedTensor)
 	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
@@ -105,42 +116,70 @@ def MMEncoder(inputTensor):#Conv+BN+ReLU / MaxPooling
 	encodedTensor = Conv2D(filters=32,kernel_size=(3,3),padding='same')(encodedTensor)
 	encodedTensor = BatchNormalization()(encodedTensor)
 	encodedTensor = Activation('relu')(encodedTensor)
+	encodedFlair_x = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+
+	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(T1ce_x)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
 	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	return encodedTensor #(15,15,32)
+	encodedTensor = Conv2D(filters=8,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=16,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=32,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedT1ce_x = MaxPooling2D(pool_size=(2,2))(encodedTensor)
 
-Flair_x = Input(shape=(240,240,1))
-T1ce_x = Input(shape=(240,240,1))
-T1_x = Input(shape=(240,240,1))
-T2_x = Input(shape=(240,240,1))
+	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(T1_x)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=8,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=16,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=32,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedT1_x = MaxPooling2D(pool_size=(2,2))(encodedTensor)
 
+	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(T2_x)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=8,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=16,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
+	encodedTensor = Conv2D(filters=32,kernel_size=(3,3),padding='same')(encodedTensor)
+	encodedTensor = BatchNormalization()(encodedTensor)
+	encodedTensor = Activation('relu')(encodedTensor)
+	encodedT2_x = MaxPooling2D(pool_size=(2,2))(encodedTensor)
 
-encodedFlair_x = MMEncoder(Flair_x)
-encodedT1ce_x = MMEncoder(T1ce_x)
-encodedT1_x = MMEncoder(T1_x)
-encodedT2_x = MMEncoder(T2_x)
+	my_stack = Lambda(lambda x: K.stack([x[0],x[1],x[2],x[3]],axis=-1))
+	CNNinput = my_stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x])
+	#CNNinput = K.stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x],axis=-1)#(15,15,32,4)
 
+	CLSTMinput = Permute((1, 2, 4, 3))(CNNinput)#(15,15,4,32)
+	CLSTMinput = Conv3D(filters=32,kernel_size=(1,1,4))(CLSTMinput) #(15,15,1,32)
+	#CLSTMinput = Flatten()(CLSTMinput)
+	CLSTMinput = Reshape((15,15,32))(CLSTMinput)
 
-my_stack = Lambda(lambda x: K.stack([x[0],x[1],x[2],x[3]],axis=-1))
-
-CNNinput = my_stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x])
-#CNNinput = K.stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x],axis=-1)#(15,15,32,4)
-def CrossModalityCovolution(CNNinput):
-	#cross modality part:
-	CNNinput = Permute((1, 2, 4, 3))(CNNinput)#(15,15,4,32)
-	#3D CNN part:
-	CLSTMinput = Conv3D(filters=32,kernel_size=(1,1,4))(CNNinput) #(15,15,1,128)
-	CLSTMinput = K.reshape(CLSTMinput,[-1,15,15,32])
-	return CLSTMinput
-
-CLSTMinput = Lambda(CrossModalityCovolution)(CNNinput)
-def CLSTM(CLSTMinput):#(15,15,128)??
-
-
-	return CLSTMinput #
-
-#CLSTMoutput = Lambda(CLSTM)(CLSTMinput)
-def Decoder(CLSTMoutput):#Conv+BN+ReLU / Upsampling
-	decodedImage = Conv2D(filters=16,kernel_size=(3,3),padding='same')(CLSTMoutput)
+	#Conv+BN+ReLU / Upsampling
+	decodedImage = Conv2D(filters=16,kernel_size=(3,3),padding='same')(CLSTMinput)
 	decodedImage = BatchNormalization()(decodedImage)
 	decodedImage = Activation('relu')(decodedImage)
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
@@ -156,18 +195,12 @@ def Decoder(CLSTMoutput):#Conv+BN+ReLU / Upsampling
 	decodedImage = BatchNormalization()(decodedImage)
 	decodedImage = Activation('relu')(decodedImage)
 	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	return decodedImage
-#decodedImage = Lambda(Decoder)(CLSTMoutput)
-decodedImage = Decoder(CLSTMinput)
+
+	CrossModalityCNNmodel = Model(inputs=[Flair_x,T1ce_x,T1_x,T2_x],outputs=decodedImage)
+	CrossModalityCNNmodel.compile(optimizer='nadam',loss = 'mse')
+	CrossModalityCNNmodel.summary()
 
 
-CrossModalityCNNmodel = Model(inputs=[Flair_x,T1ce_x,T1_x,T2_x],outputs=decodedImage)
-CrossModalityCNNmodel.compile(optimizer='nadam',loss = 'mse')
-CrossModalityCNNmodel.summary()
-
-save_model_file = 'myModel.h5'
-if os.path.isfile(save_model_file):
-	CrossModalityCNNmodel = load_model(save_model_file)
 
 
 input_list = [data_train[0],data_train[1],data_train[2],data_train[3]]

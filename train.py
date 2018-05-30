@@ -89,76 +89,30 @@ X_test =  X_test.reshape((4,-1,240,240,1))
 Y_test = Y_test.reshape((-1,240,240,1))
 print "reshaped data_train.shape,label.shape,X_test.shape,Y_test.shape:",data_train.shape,label.shape,X_test.shape,Y_test.shape
 
-def MMEncoder(inputTensor):#Conv+BN+ReLU / MaxPooling
-	encodedTensor = Conv2D(filters=4,kernel_size=(3,3),padding='same')(inputTensor)
-	encodedTensor = BatchNormalization()(encodedTensor)
-	encodedTensor = Activation('relu')(encodedTensor)
-	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	encodedTensor = Conv2D(filters=8,kernel_size=(3,3),padding='same')(encodedTensor)
-	encodedTensor = BatchNormalization()(encodedTensor)
-	encodedTensor = Activation('relu')(encodedTensor)
-	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	encodedTensor = Conv2D(filters=16,kernel_size=(3,3),padding='same')(encodedTensor)
-	encodedTensor = BatchNormalization()(encodedTensor)
-	encodedTensor = Activation('relu')(encodedTensor)
-	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	encodedTensor = Conv2D(filters=32,kernel_size=(3,3),padding='same')(encodedTensor)
-	encodedTensor = BatchNormalization()(encodedTensor)
-	encodedTensor = Activation('relu')(encodedTensor)
-	encodedTensor = MaxPooling2D(pool_size=(2,2))(encodedTensor)
-	return encodedTensor #(15,15,32)
 
 Flair_x = Input(shape=(240,240,1))
 T1ce_x = Input(shape=(240,240,1))
 T1_x = Input(shape=(240,240,1))
 T2_x = Input(shape=(240,240,1))
 
-
-encodedFlair_x = MMEncoder(Flair_x)
-encodedT1ce_x = MMEncoder(T1ce_x)
-encodedT1_x = MMEncoder(T1_x)
-encodedT2_x = MMEncoder(T2_x)
-
-
+filters_list = [4,8,16,32]
+encodeORdecode = 'encode'
+encodedFlair_x = MySegnet(filters_list=filters_list,encodeORdecode=encodeORdecode)(Flair_x)
+encodedT1ce_x = MySegnet(filters_list=filters_list,encodeORdecode=encodeORdecode)(T1ce_x)
+encodedT1_x = MySegnet(filters_list=filters_list,encodeORdecode=encodeORdecode)(T1_x)
+encodedT2_x = MySegnet(filters_list=filters_list,encodeORdecode=encodeORdecode)(T2_x)
 my_stack = Lambda(lambda x: K.stack([x[0],x[1],x[2],x[3]],axis=-1))
-
 CNNinput = my_stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x])
 #CNNinput = K.stack([encodedFlair_x,encodedT1ce_x,encodedT1_x,encodedT2_x],axis=-1)#(15,15,32,4)
-def CrossModalityCovolution(CNNinput):
-	#cross modality part:
-	CNNinput = Permute((1, 2, 4, 3))(CNNinput)#(15,15,4,32)
-	#3D CNN part:
-	CLSTMinput = Conv3D(filters=32,kernel_size=(1,1,4))(CNNinput) #(15,15,1,128)
-	CLSTMinput = K.reshape(CLSTMinput,[-1,15,15,32])
-	return CLSTMinput
+CrossModalityCNNmodel = Model(inputs=[Flair_x,T1ce_x,T1_x,T2_x],outputs=CNNinput)
+CrossModalityCNNmodel.compile(optimizer='nadam',loss = 'mse')
+CrossModalityCNNmodel.summary()
+#testing
+CLSTMinput = CrossModalityCovolution()(CNNinput)
 
-CLSTMinput = Lambda(CrossModalityCovolution)(CNNinput)
-def CLSTM(CLSTMinput):#(15,15,128)??
-
-
-	return CLSTMinput #
-
-#CLSTMoutput = Lambda(CLSTM)(CLSTMinput)
-def Decoder(CLSTMoutput):#Conv+BN+ReLU / Upsampling
-	decodedImage = Conv2D(filters=16,kernel_size=(3,3),padding='same')(CLSTMoutput)
-	decodedImage = BatchNormalization()(decodedImage)
-	decodedImage = Activation('relu')(decodedImage)
-	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	decodedImage = Conv2D(filters=8,kernel_size=(3,3),padding='same')(decodedImage)
-	decodedImage = BatchNormalization()(decodedImage)
-	decodedImage = Activation('relu')(decodedImage)
-	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	decodedImage = Conv2D(filters=4,kernel_size=(3,3),padding='same')(decodedImage)
-	decodedImage = BatchNormalization()(decodedImage)
-	decodedImage = Activation('relu')(decodedImage)
-	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	decodedImage = Conv2D(filters=1,kernel_size=(3,3),padding='same')(decodedImage)
-	decodedImage = BatchNormalization()(decodedImage)
-	decodedImage = Activation('relu')(decodedImage)
-	decodedImage = UpSampling2D(size=(2,2))(decodedImage)
-	return decodedImage
-#decodedImage = Lambda(Decoder)(CLSTMoutput)
-decodedImage = Decoder(CLSTMinput)
+filters_list = [16,8,4,1]
+encodeORdecode = 'decode'
+decodedImage = MySegnet(filters_list=filters_list,encodeORdecode=encodeORdecode)(CLSTMinput)
 
 
 CrossModalityCNNmodel = Model(inputs=[Flair_x,T1ce_x,T1_x,T2_x],outputs=decodedImage)
